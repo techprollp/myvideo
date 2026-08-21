@@ -9,8 +9,14 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = 'my_videos_super_secret_jwt_key_2026';
 
-// Initialize Admin User on server start
-db.initSeedAdmin();
+// Initialize Admin User & Cloud DB Schema on server start
+(async () => {
+  try {
+    await db.initSeedAdmin();
+  } catch (err) {
+    console.error("Failed to initialize cloud DB schema:", err);
+  }
+})();
 
 // Middleware
 app.use(cors());
@@ -58,7 +64,7 @@ function parseVideoUrl(inputUrl) {
 }
 
 // Authentication Middleware with Blocked User Check
-function authenticateToken(req, res, next) {
+async function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
@@ -66,12 +72,10 @@ function authenticateToken(req, res, next) {
     return res.status(401).json({ error: 'Access denied. Please log in or sign up to view videos.' });
   }
 
-  jwt.verify(token, JWT_SECRET, (err, decoded) => {
-    if (err) {
-      return res.status(403).json({ error: 'Invalid or expired session. Please log in again.' });
-    }
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const user = await db.getUserById(decoded.id);
 
-    const user = db.getUserById(decoded.id);
     if (!user) {
       return res.status(401).json({ error: 'Account no longer exists.' });
     }
@@ -81,7 +85,9 @@ function authenticateToken(req, res, next) {
 
     req.user = user;
     next();
-  });
+  } catch (err) {
+    return res.status(403).json({ error: 'Invalid or expired session. Please log in again.' });
+  }
 }
 
 // Admin authorization Middleware
@@ -95,7 +101,7 @@ function requireAdmin(req, res, next) {
 // --- AUTH, OTP & FORGOT PASSWORD ROUTES ---
 
 // Send OTP for Signup
-app.post('/api/auth/send-otp', (req, res) => {
+app.post('/api/auth/send-otp', async (req, res) => {
   try {
     const { phone } = req.body;
     if (!phone || phone.trim().length < 6) {
@@ -103,7 +109,7 @@ app.post('/api/auth/send-otp', (req, res) => {
     }
 
     const cleanPhone = phone.trim();
-    const code = db.generateOtp(cleanPhone);
+    const code = await db.generateOtp(cleanPhone);
 
     console.log(`📱 [MOBILE OTP SENT] To: ${cleanPhone} | Code: ${code}`);
 
@@ -119,20 +125,20 @@ app.post('/api/auth/send-otp', (req, res) => {
 });
 
 // Forgot Password - Request OTP by Username or Phone Number
-app.post('/api/auth/forgot-password-otp', (req, res) => {
+app.post('/api/auth/forgot-password-otp', async (req, res) => {
   try {
     const { identifier } = req.body;
     if (!identifier || !identifier.trim()) {
       return res.status(400).json({ error: 'Username or Mobile Phone Number is required.' });
     }
 
-    const user = db.getUserByIdentifier(identifier);
+    const user = await db.getUserByIdentifier(identifier);
     if (!user) {
       return res.status(404).json({ error: `Account '${identifier.trim()}' not found. Please check spelling or click Sign Up to create an account.` });
     }
 
     const phoneToUse = user.phone || '+10000000000';
-    const code = db.generateOtp(phoneToUse);
+    const code = await db.generateOtp(phoneToUse);
 
     console.log(`🔑 [FORGOT PASSWORD OTP SENT] User: ${user.username} | Phone: ${phoneToUse} | Code: ${code}`);
 
@@ -158,7 +164,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
       return res.status(400).json({ error: 'All fields (User ID, OTP code, and New Password) are required.' });
     }
 
-    const user = db.getUserById(userId);
+    const user = await db.getUserById(userId);
     if (!user) {
       return res.status(404).json({ error: 'User account not found.' });
     }
@@ -168,7 +174,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
     }
 
     const phoneToVerify = user.phone || '+10000000000';
-    const isValidOtp = db.verifyOtp(phoneToVerify, otp.trim());
+    const isValidOtp = await db.verifyOtp(phoneToVerify, otp.trim());
 
     if (!isValidOtp) {
       return res.status(400).json({ error: 'Invalid or expired OTP verification code.' });
@@ -177,7 +183,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(newPassword.trim(), salt);
 
-    db.resetUserPassword(user.id, passwordHash);
+    await db.resetUserPassword(user.id, passwordHash);
 
     res.json({ message: 'Password reset successfully! You can now log in with your new password.' });
   } catch (err) {
@@ -207,19 +213,19 @@ app.post('/api/auth/signup', async (req, res) => {
       return res.status(400).json({ error: 'Password must be at least 4 characters long.' });
     }
 
-    if (db.getUserByUsername(cleanUsername)) {
+    if (await db.getUserByUsername(cleanUsername)) {
       return res.status(400).json({ error: 'Username is already registered.' });
     }
 
-    if (db.getUserByEmail(cleanEmail)) {
+    if (await db.getUserByEmail(cleanEmail)) {
       return res.status(400).json({ error: 'Email ID is already registered.' });
     }
 
-    if (db.getUserByPhone(cleanPhone)) {
+    if (await db.getUserByPhone(cleanPhone)) {
       return res.status(400).json({ error: 'Phone number is already registered.' });
     }
 
-    const isValidOtp = db.verifyOtp(cleanPhone, otp.trim());
+    const isValidOtp = await db.verifyOtp(cleanPhone, otp.trim());
     if (!isValidOtp) {
       return res.status(400).json({ error: 'Invalid or expired OTP code. Please request a new OTP.' });
     }
@@ -227,7 +233,7 @@ app.post('/api/auth/signup', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    const newUser = db.createUser({
+    const newUser = await db.createUser({
       username: cleanUsername,
       email: cleanEmail,
       phone: cleanPhone,
@@ -262,7 +268,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const cleanInput = username.trim();
-    const user = db.getUserByIdentifier(cleanInput);
+    const user = await db.getUserByIdentifier(cleanInput);
 
     if (!user) {
       return res.status(400).json({ error: `Account '${cleanInput}' not found. Please check spelling or Sign Up to create an account.` });
@@ -305,9 +311,9 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 // --- ADMIN PANEL ROUTES ---
 
 // GET All Registered Users Details (ADMIN ONLY)
-app.get('/api/admin/users', authenticateToken, requireAdmin, (req, res) => {
+app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const users = db.getAllUsersForAdmin();
+    const users = await db.getAllUsersForAdmin();
     res.json(users);
   } catch (err) {
     console.error('Error fetching admin users:', err);
@@ -316,10 +322,10 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // Block / Unblock User (ADMIN ONLY)
-app.post('/api/admin/users/:id/block', authenticateToken, requireAdmin, (req, res) => {
+app.post('/api/admin/users/:id/block', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const targetUserId = req.params.id;
-    const updatedUser = db.toggleBlockUser(targetUserId);
+    const updatedUser = await db.toggleBlockUser(targetUserId);
 
     if (!updatedUser) {
       return res.status(400).json({ error: 'User not found or cannot block Admin account.' });
@@ -334,10 +340,10 @@ app.post('/api/admin/users/:id/block', authenticateToken, requireAdmin, (req, re
 });
 
 // Delete User Account (ADMIN ONLY)
-app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, (req, res) => {
+app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const targetUserId = req.params.id;
-    const deletedUser = db.deleteUser(targetUserId);
+    const deletedUser = await db.deleteUser(targetUserId);
 
     if (!deletedUser) {
       return res.status(400).json({ error: 'User not found or cannot delete Admin account.' });
@@ -374,7 +380,7 @@ app.put('/api/admin/credentials', authenticateToken, requireAdmin, async (req, r
     }
 
     if (newUsername && newUsername.trim().toLowerCase() !== req.user.username.toLowerCase()) {
-      const existing = db.getUserByUsername(newUsername.trim());
+      const existing = await db.getUserByUsername(newUsername.trim());
       if (existing) {
         return res.status(400).json({ error: 'Username is already taken.' });
       }
@@ -403,10 +409,10 @@ app.put('/api/admin/credentials', authenticateToken, requireAdmin, async (req, r
 // --- VIDEO ROUTES ---
 
 // GET Videos List (REQUIRES AUTH)
-app.get('/api/videos', authenticateToken, (req, res) => {
+app.get('/api/videos', authenticateToken, async (req, res) => {
   try {
     const { q, category } = req.query;
-    const videos = db.getVideos(q, category);
+    const videos = await db.getVideos(q, category);
     res.json(videos);
   } catch (err) {
     console.error('Error fetching videos:', err);
@@ -415,7 +421,7 @@ app.get('/api/videos', authenticateToken, (req, res) => {
 });
 
 // POST New Video Link (ADMIN ONLY)
-app.post('/api/videos', authenticateToken, requireAdmin, (req, res) => {
+app.post('/api/videos', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { title, url, description, category, thumbnailUrl } = req.body;
 
@@ -425,7 +431,7 @@ app.post('/api/videos', authenticateToken, requireAdmin, (req, res) => {
 
     const parsed = parseVideoUrl(url);
 
-    const newVideo = db.addVideo({
+    const newVideo = await db.addVideo({
       title: title.trim(),
       url: parsed.url,
       embedUrl: parsed.embedUrl,
@@ -448,10 +454,10 @@ app.post('/api/videos', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // DELETE Video (ADMIN ONLY)
-app.delete('/api/videos/:id', authenticateToken, requireAdmin, (req, res) => {
+app.delete('/api/videos/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const videoId = req.params.id;
-    const deleted = db.deleteVideo(videoId, req.user);
+    const deleted = await db.deleteVideo(videoId, req.user);
 
     if (!deleted) {
       return res.status(404).json({ error: 'Video not found or already deleted.' });
@@ -473,5 +479,6 @@ app.get('*', (req, res) => {
 app.listen(PORT, () => {
   console.log(`=================================================`);
   console.log(`🎬 MY VIDEOS server running at http://localhost:${PORT}`);
+  console.log(`⚡ Connected to Turso Cloud DB: ${db.TURSO_URL || 'libsql://myvideo-shareef123.aws-us-east-1.turso.io'}`);
   console.log(`=================================================`);
 });

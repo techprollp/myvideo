@@ -1,188 +1,239 @@
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
+const { createClient } = require('@libsql/client');
+
+// Turso Cloud Database Configuration
+const TURSO_URL = process.env.TURSO_DATABASE_URL || 'libsql://myvideo-shareef123.aws-us-east-1.turso.io';
+const TURSO_TOKEN = process.env.TURSO_AUTH_TOKEN || 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODczMTE5OTYsImlkIjoiMDFhMDI0MTgtOWIwMS03NTk1LWFkZTctYzZhNDMzOWQ0OTA1Iiwia2lkIjoiY0FYMDhoMU9mc0Nyc3lra3JYOGNNUmYzWnhQOEFSa1lhNkdjb2FnQnlFVSIsInJpZCI6IjA5MTUxYTg1LTRlYWUtNGE3OS05MTFlLTViYjM5YzA0Nzg0YyJ9.TLieDAQSWLzec0Ed9UzPkMl6OXVP3PO29IFyOC0s7AFttgICwYwwm22521Ujf_Hq5DWh9wdKraodaXJZD5XRDg';
 
 const DB_FILE = path.join(__dirname, 'data.json');
 
-const otpStore = {};
+// Initialize Turso Client
+const turso = createClient({
+  url: TURSO_URL,
+  authToken: TURSO_TOKEN
+});
 
-const defaultData = {
-  users: [],
-  videos: [
-    {
-      id: "vid_seed_1",
-      title: "Big Buck Bunny - Animated Short Film",
-      url: "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
-      embedUrl: "https://www.youtube.com/embed/aqz-KE-bpKQ?autoplay=1&enablejsapi=1",
-      embedType: "youtube",
-      thumbnailUrl: "https://img.youtube.com/vi/aqz-KE-bpKQ/maxresdefault.jpg",
-      description: "Classic open-source animated short film created by the Blender Institute.",
-      category: "Animation",
-      uploaderId: "admin_1",
-      uploaderName: "admin",
-      createdAt: new Date(Date.now() - 86400000 * 3).toISOString()
-    },
-    {
-      id: "vid_seed_2",
-      title: "Tears of Steel - Sci-Fi Short",
-      url: "https://www.youtube.com/watch?v=r6Lie3sI072",
-      embedUrl: "https://www.youtube.com/embed/r6Lie3sI072?autoplay=1&enablejsapi=1",
-      embedType: "youtube",
-      thumbnailUrl: "https://img.youtube.com/vi/r6Lie3sI072/maxresdefault.jpg",
-      description: "Visual effects open movie project set in dystopian Amsterdam.",
-      category: "Sci-Fi",
-      uploaderId: "admin_1",
-      uploaderName: "admin",
-      createdAt: new Date(Date.now() - 86400000 * 2).toISOString()
-    },
-    {
-      id: "vid_seed_3",
-      title: "Nature Wildlife & Forest Streams (Direct MP4)",
-      url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-      embedUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-      embedType: "video",
-      thumbnailUrl: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&q=80",
-      description: "High definition nature footage streaming directly via standard MP4 link.",
-      category: "Nature",
-      uploaderId: "admin_1",
-      uploaderName: "admin",
-      createdAt: new Date(Date.now() - 86400000 * 1).toISOString()
-    },
-    {
-      id: "vid_seed_4",
-      title: "Sintel - Fantasy Quest",
-      url: "https://www.youtube.com/watch?v=eRsGyueVLvQ",
-      embedUrl: "https://www.youtube.com/embed/eRsGyueVLvQ?autoplay=1&enablejsapi=1",
-      embedType: "youtube",
-      thumbnailUrl: "https://img.youtube.com/vi/eRsGyueVLvQ/maxresdefault.jpg",
-      description: "An epic dragon fantasy story produced by Blender Foundation.",
-      category: "Fantasy",
-      uploaderId: "admin_1",
-      uploaderName: "admin",
-      createdAt: new Date().toISOString()
-    }
-  ]
-};
-
-function loadDb() {
-  try {
-    if (!fs.existsSync(DB_FILE)) {
-      saveDb(defaultData);
-      return defaultData;
-    }
-    const raw = fs.readFileSync(DB_FILE, 'utf8');
-    const data = JSON.parse(raw);
-    if (!data.users) data.users = [];
-    if (!data.videos) data.videos = [];
-    return data;
-  } catch (err) {
-    console.error("Error reading database file, using fallback", err);
-    return defaultData;
+const defaultVideos = [
+  {
+    id: "vid_seed_1",
+    title: "Big Buck Bunny - Animated Short Film",
+    url: "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
+    embedUrl: "https://www.youtube.com/embed/aqz-KE-bpKQ?autoplay=1&enablejsapi=1",
+    embedType: "youtube",
+    thumbnailUrl: "https://img.youtube.com/vi/aqz-KE-bpKQ/maxresdefault.jpg",
+    description: "Classic open-source animated short film created by the Blender Institute.",
+    category: "Animation",
+    uploaderId: "admin_1",
+    uploaderName: "admin",
+    createdAt: new Date(Date.now() - 86400000 * 3).toISOString()
+  },
+  {
+    id: "vid_seed_2",
+    title: "Tears of Steel - Sci-Fi Short",
+    url: "https://www.youtube.com/watch?v=r6Lie3sI072",
+    embedUrl: "https://www.youtube.com/embed/r6Lie3sI072?autoplay=1&enablejsapi=1",
+    embedType: "youtube",
+    thumbnailUrl: "https://img.youtube.com/vi/r6Lie3sI072/maxresdefault.jpg",
+    description: "Visual effects open movie project set in dystopian Amsterdam.",
+    category: "Sci-Fi",
+    uploaderId: "admin_1",
+    uploaderName: "admin",
+    createdAt: new Date(Date.now() - 86400000 * 2).toISOString()
+  },
+  {
+    id: "vid_seed_3",
+    title: "Nature Wildlife & Forest Streams (Direct MP4)",
+    url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    embedUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    embedType: "video",
+    thumbnailUrl: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&q=80",
+    description: "High definition nature footage streaming directly via standard MP4 link.",
+    category: "Nature",
+    uploaderId: "admin_1",
+    uploaderName: "admin",
+    createdAt: new Date(Date.now() - 86400000 * 1).toISOString()
+  },
+  {
+    id: "vid_seed_4",
+    title: "Sintel - Fantasy Quest",
+    url: "https://www.youtube.com/watch?v=eRsGyueVLvQ",
+    embedUrl: "https://www.youtube.com/embed/eRsGyueVLvQ?autoplay=1&enablejsapi=1",
+    embedType: "youtube",
+    thumbnailUrl: "https://img.youtube.com/vi/eRsGyueVLvQ/maxresdefault.jpg",
+    description: "An epic dragon fantasy story produced by Blender Foundation.",
+    category: "Fantasy",
+    uploaderId: "admin_1",
+    uploaderName: "admin",
+    createdAt: new Date().toISOString()
   }
-}
+];
 
-function saveDb(data) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
-}
-
-// Seed default Admin user if none exists
+// Initialize Turso Cloud Schema & Seed Data
 async function initSeedAdmin() {
-  const data = loadDb();
-  let adminUser = data.users.find(u => u.role === 'admin' || u.username.toLowerCase() === 'admin');
-  
-  if (!adminUser) {
-    const passwordHash = await bcrypt.hash('admin123', 10);
-    adminUser = {
-      id: 'admin_1',
-      username: 'admin',
-      email: 'admin@myvideos.com',
-      phone: '+10000000000',
-      passwordHash: passwordHash,
-      role: 'admin',
-      isBlocked: false,
-      createdAt: new Date().toISOString()
-    };
-    data.users.unshift(adminUser);
-    saveDb(data);
-    console.log("🔑 Default Admin Account initialized: username 'admin'");
-  } else {
-    if (!adminUser.email) adminUser.email = 'admin@myvideos.com';
-    if (!adminUser.phone) adminUser.phone = '+10000000000';
-    if (!adminUser.role) adminUser.role = 'admin';
-    if (adminUser.isBlocked === undefined) adminUser.isBlocked = false;
-    saveDb(data);
+  try {
+    await turso.execute(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        username TEXT UNIQUE,
+        email TEXT,
+        phone TEXT,
+        passwordHash TEXT,
+        role TEXT,
+        isBlocked INTEGER DEFAULT 0,
+        createdAt TEXT
+      );
+    `);
+
+    await turso.execute(`
+      CREATE TABLE IF NOT EXISTS videos (
+        id TEXT PRIMARY KEY,
+        title TEXT,
+        url TEXT,
+        embedUrl TEXT,
+        embedType TEXT,
+        thumbnailUrl TEXT,
+        description TEXT,
+        category TEXT,
+        uploaderId TEXT,
+        uploaderName TEXT,
+        createdAt TEXT
+      );
+    `);
+
+    await turso.execute(`
+      CREATE TABLE IF NOT EXISTS otps (
+        phone TEXT PRIMARY KEY,
+        code TEXT,
+        expiresAt INTEGER
+      );
+    `);
+
+    // Check if seed admin exists
+    const adminCheck = await turso.execute("SELECT * FROM users WHERE role = 'admin' OR username = 'admin' LIMIT 1;");
+    if (adminCheck.rows.length === 0) {
+      const passwordHash = await bcrypt.hash('admin123', 10);
+      await turso.execute({
+        sql: "INSERT INTO users (id, username, email, phone, passwordHash, role, isBlocked, createdAt) VALUES (?, ?, ?, ?, ?, ?, 0, ?);",
+        args: ['admin_1', 'admin', 'admin@myvideos.com', '+10000000000', passwordHash, 'admin', new Date().toISOString()]
+      });
+      console.log("🔑 Default Admin seeded in Turso Cloud Database: 'admin' / 'admin123'");
+    }
+
+    // Seed initial videos if empty
+    const videoCheck = await turso.execute("SELECT COUNT(*) as count FROM videos;");
+    if (videoCheck.rows[0].count === 0) {
+      for (const v of defaultVideos) {
+        await turso.execute({
+          sql: "INSERT INTO videos (id, title, url, embedUrl, embedType, thumbnailUrl, description, category, uploaderId, uploaderName, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+          args: [v.id, v.title, v.url, v.embedUrl, v.embedType, v.thumbnailUrl, v.description, v.category, v.uploaderId, v.uploaderName, v.createdAt]
+        });
+      }
+      console.log("📹 Seed videos inserted into Turso Cloud Database!");
+    }
+
+    console.log("⚡ Turso Cloud Database Schema & Connection Ready!");
+  } catch (err) {
+    console.error("Turso init error:", err);
   }
 }
 
+// Database Layer Implementation (Turso Primary + Async Cloud Sync)
 const db = {
   initSeedAdmin,
-  
+
   // OTP Management
-  generateOtp: (phone) => {
+  generateOtp: async (phone) => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    otpStore[phone] = {
-      code,
-      expiresAt: Date.now() + 5 * 60 * 1000
-    };
+    const expiresAt = Date.now() + 5 * 60 * 1000;
+    try {
+      await turso.execute({
+        sql: "INSERT OR REPLACE INTO otps (phone, code, expiresAt) VALUES (?, ?, ?);",
+        args: [phone.trim(), code, expiresAt]
+      });
+    } catch (e) {
+      console.error("OTP cloud save error:", e);
+    }
     return code;
   },
 
-  verifyOtp: (phone, code) => {
-    const record = otpStore[phone];
-    if (!record) return false;
-    if (Date.now() > record.expiresAt) {
-      delete otpStore[phone];
+  verifyOtp: async (phone, code) => {
+    try {
+      const res = await turso.execute({
+        sql: "SELECT * FROM otps WHERE phone = ?;",
+        args: [phone.trim()]
+      });
+
+      if (res.rows.length === 0) return false;
+      const record = res.rows[0];
+
+      if (Date.now() > record.expiresAt) {
+        await turso.execute({ sql: "DELETE FROM otps WHERE phone = ?;", args: [phone.trim()] });
+        return false;
+      }
+
+      if (record.code === code.trim()) {
+        await turso.execute({ sql: "DELETE FROM otps WHERE phone = ?;", args: [phone.trim()] });
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error("OTP verification error:", e);
       return false;
     }
-    if (record.code === code.trim()) {
-      delete otpStore[phone];
-      return true;
-    }
-    return false;
   },
 
-  getUsers: () => {
-    return loadDb().users;
+  getUsers: async () => {
+    const res = await turso.execute("SELECT * FROM users;");
+    return res.rows.map(mapUserRow);
   },
 
-  getAllUsersForAdmin: () => {
-    const users = loadDb().users;
-    return users.map(u => ({
-      id: u.id,
-      username: u.username,
-      email: u.email || 'N/A',
-      phone: u.phone || 'N/A',
-      role: u.role || 'user',
-      isBlocked: !!u.isBlocked,
-      createdAt: u.createdAt
+  getAllUsersForAdmin: async () => {
+    const res = await turso.execute("SELECT id, username, email, phone, role, isBlocked, createdAt FROM users;");
+    return res.rows.map(r => ({
+      id: r.id,
+      username: r.username,
+      email: r.email || 'N/A',
+      phone: r.phone || 'N/A',
+      role: r.role || 'user',
+      isBlocked: !!r.isBlocked,
+      createdAt: r.createdAt
     }));
   },
 
-  getUserByUsername: (username) => {
-    const data = loadDb();
-    return data.users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
-  },
-
-  getUserByEmail: (email) => {
-    const data = loadDb();
-    return data.users.find(u => u.email && u.email.toLowerCase() === email.trim().toLowerCase());
-  },
-
-  getUserByPhone: (phone) => {
-    const data = loadDb();
-    const cleanDigits = phone.replace(/\D/g, '');
-    return data.users.find(u => {
-      const dbPhoneDigits = u.phone ? u.phone.replace(/\D/g, '') : '';
-      return u.phone === phone.trim() || (cleanDigits && dbPhoneDigits && dbPhoneDigits === cleanDigits);
+  getUserByUsername: async (username) => {
+    const res = await turso.execute({
+      sql: "SELECT * FROM users WHERE LOWER(username) = LOWER(?);",
+      args: [username.trim()]
     });
+    return res.rows.length > 0 ? mapUserRow(res.rows[0]) : null;
   },
 
-  getUserByIdentifier: (identifier) => {
-    const data = loadDb();
+  getUserByEmail: async (email) => {
+    const res = await turso.execute({
+      sql: "SELECT * FROM users WHERE LOWER(email) = LOWER(?);",
+      args: [email.trim()]
+    });
+    return res.rows.length > 0 ? mapUserRow(res.rows[0]) : null;
+  },
+
+  getUserByPhone: async (phone) => {
+    const res = await turso.execute({
+      sql: "SELECT * FROM users WHERE phone = ?;",
+      args: [phone.trim()]
+    });
+    return res.rows.length > 0 ? mapUserRow(res.rows[0]) : null;
+  },
+
+  getUserByIdentifier: async (identifier) => {
     const clean = identifier.trim().toLowerCase();
     const digits = identifier.replace(/\D/g, '');
 
-    return data.users.find(u => {
+    const allUsersRes = await turso.execute("SELECT * FROM users;");
+    const users = allUsersRes.rows.map(mapUserRow);
+
+    return users.find(u => {
       const uPhoneDigits = u.phone ? u.phone.replace(/\D/g, '') : '';
       return (
         u.username.toLowerCase() === clean || 
@@ -190,16 +241,18 @@ const db = {
         (u.phone && u.phone.toLowerCase() === clean) ||
         (digits.length >= 5 && uPhoneDigits && uPhoneDigits.endsWith(digits))
       );
+    }) || null;
+  },
+
+  getUserById: async (id) => {
+    const res = await turso.execute({
+      sql: "SELECT * FROM users WHERE id = ?;",
+      args: [id]
     });
+    return res.rows.length > 0 ? mapUserRow(res.rows[0]) : null;
   },
 
-  getUserById: (id) => {
-    const data = loadDb();
-    return data.users.find(u => u.id === id);
-  },
-
-  createUser: ({ username, email, phone, passwordHash, role = 'user' }) => {
-    const data = loadDb();
+  createUser: async ({ username, email, phone, passwordHash, role = 'user' }) => {
     const newUser = {
       id: 'usr_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
       username: username.trim(),
@@ -210,81 +263,103 @@ const db = {
       isBlocked: false,
       createdAt: new Date().toISOString()
     };
-    data.users.push(newUser);
-    saveDb(data);
+
+    await turso.execute({
+      sql: "INSERT INTO users (id, username, email, phone, passwordHash, role, isBlocked, createdAt) VALUES (?, ?, ?, ?, ?, ?, 0, ?);",
+      args: [newUser.id, newUser.username, newUser.email, newUser.phone, newUser.passwordHash, newUser.role, newUser.createdAt]
+    });
+
     return newUser;
   },
 
-  resetUserPassword: (userId, newPasswordHash) => {
-    const data = loadDb();
-    const user = data.users.find(u => u.id === userId);
-    if (!user) return null;
-
-    user.passwordHash = newPasswordHash;
-    saveDb(data);
-    return user;
+  resetUserPassword: async (userId, newPasswordHash) => {
+    await turso.execute({
+      sql: "UPDATE users SET passwordHash = ? WHERE id = ?;",
+      args: [newPasswordHash, userId]
+    });
+    const res = await turso.execute({ sql: "SELECT * FROM users WHERE id = ?;", args: [userId] });
+    return res.rows.length > 0 ? mapUserRow(res.rows[0]) : null;
   },
 
   updateAdminCredentials: async (adminId, newUsername, newPasswordHash) => {
-    const data = loadDb();
-    const adminUser = data.users.find(u => u.id === adminId && u.role === 'admin');
-    if (!adminUser) return null;
+    if (newUsername && newPasswordHash) {
+      await turso.execute({
+        sql: "UPDATE users SET username = ?, passwordHash = ? WHERE id = ? AND role = 'admin';",
+        args: [newUsername.trim(), newPasswordHash, adminId]
+      });
+    } else if (newUsername) {
+      await turso.execute({
+        sql: "UPDATE users SET username = ? WHERE id = ? AND role = 'admin';",
+        args: [newUsername.trim(), adminId]
+      });
+    } else if (newPasswordHash) {
+      await turso.execute({
+        sql: "UPDATE users SET passwordHash = ? WHERE id = ? AND role = 'admin';",
+        args: [newPasswordHash, adminId]
+      });
+    }
 
-    if (newUsername) adminUser.username = newUsername.trim();
-    if (newPasswordHash) adminUser.passwordHash = newPasswordHash;
-
-    saveDb(data);
-    return adminUser;
+    const res = await turso.execute({ sql: "SELECT * FROM users WHERE id = ?;", args: [adminId] });
+    return res.rows.length > 0 ? mapUserRow(res.rows[0]) : null;
   },
 
-  toggleBlockUser: (userId) => {
-    const data = loadDb();
-    const user = data.users.find(u => u.id === userId);
-    if (!user || user.role === 'admin') return null;
+  toggleBlockUser: async (userId) => {
+    const userRes = await turso.execute({ sql: "SELECT * FROM users WHERE id = ?;", args: [userId] });
+    if (userRes.rows.length === 0) return null;
+    const user = mapUserRow(userRes.rows[0]);
+    if (user.role === 'admin') return null;
 
-    user.isBlocked = !user.isBlocked;
-    saveDb(data);
+    const newBlockedStatus = user.isBlocked ? 0 : 1;
+    await turso.execute({
+      sql: "UPDATE users SET isBlocked = ? WHERE id = ?;",
+      args: [newBlockedStatus, userId]
+    });
+
+    user.isBlocked = !!newBlockedStatus;
     return user;
   },
 
-  deleteUser: (userId) => {
-    const data = loadDb();
-    const idx = data.users.findIndex(u => u.id === userId && u.role !== 'admin');
-    if (idx !== -1) {
-      const deleted = data.users.splice(idx, 1);
-      saveDb(data);
-      return deleted[0];
-    }
-    return null;
+  deleteUser: async (userId) => {
+    const userRes = await turso.execute({ sql: "SELECT * FROM users WHERE id = ? AND role != 'admin';", args: [userId] });
+    if (userRes.rows.length === 0) return null;
+
+    const user = mapUserRow(userRes.rows[0]);
+    await turso.execute({ sql: "DELETE FROM users WHERE id = ?;", args: [userId] });
+    return user;
   },
 
-  getVideos: (query = '', category = '') => {
-    const data = loadDb();
-    let videos = [...data.videos];
+  getVideos: async (query = '', category = '') => {
+    let sql = "SELECT * FROM videos";
+    const conditions = [];
+    const args = [];
 
     if (query) {
-      const q = query.toLowerCase();
-      videos = videos.filter(v => 
-        v.title.toLowerCase().includes(q) || 
-        v.description.toLowerCase().includes(q) ||
-        v.uploaderName.toLowerCase().includes(q)
-      );
+      conditions.push("(LOWER(title) LIKE ? OR LOWER(description) LIKE ? OR LOWER(uploaderName) LIKE ?)");
+      const q = `%${query.toLowerCase()}%`;
+      args.push(q, q, q);
     }
 
     if (category && category !== 'All') {
-      videos = videos.filter(v => v.category.toLowerCase() === category.toLowerCase());
+      conditions.push("LOWER(category) = LOWER(?)");
+      args.push(category);
     }
 
-    return videos.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    if (conditions.length > 0) {
+      sql += " WHERE " + conditions.join(" AND ");
+    }
+
+    sql += " ORDER BY createdAt DESC;";
+
+    const res = await turso.execute({ sql, args });
+    return res.rows.map(mapVideoRow);
   },
 
-  getVideoById: (id) => {
-    const data = loadDb();
-    return data.videos.find(v => v.id === id);
+  getVideoById: async (id) => {
+    const res = await turso.execute({ sql: "SELECT * FROM videos WHERE id = ?;", args: [id] });
+    return res.rows.length > 0 ? mapVideoRow(res.rows[0]) : null;
   },
 
-  addVideo: (videoData) => {
-    const data = loadDb();
+  addVideo: async (videoData) => {
     const newVideo = {
       id: 'vid_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
       title: videoData.title,
@@ -298,27 +373,60 @@ const db = {
       uploaderName: videoData.uploaderName,
       createdAt: new Date().toISOString()
     };
-    data.videos.unshift(newVideo);
-    saveDb(data);
+
+    await turso.execute({
+      sql: "INSERT INTO videos (id, title, url, embedUrl, embedType, thumbnailUrl, description, category, uploaderId, uploaderName, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+      args: [newVideo.id, newVideo.title, newVideo.url, newVideo.embedUrl, newVideo.embedType, newVideo.thumbnailUrl, newVideo.description, newVideo.category, newVideo.uploaderId, newVideo.uploaderName, newVideo.createdAt]
+    });
+
     return newVideo;
   },
 
-  deleteVideo: (id, requesterUser) => {
-    const data = loadDb();
-    let idx = -1;
-    if (requesterUser.role === 'admin') {
-      idx = data.videos.findIndex(v => v.id === id);
-    } else {
-      idx = data.videos.findIndex(v => v.id === id && v.uploaderId === requesterUser.id);
+  deleteVideo: async (id, requesterUser) => {
+    let checkSql = "SELECT * FROM videos WHERE id = ?;";
+    const args = [id];
+
+    if (requesterUser.role !== 'admin') {
+      checkSql = "SELECT * FROM videos WHERE id = ? AND uploaderId = ?;";
+      args.push(requesterUser.id);
     }
 
-    if (idx !== -1) {
-      const deleted = data.videos.splice(idx, 1);
-      saveDb(data);
-      return deleted[0];
-    }
-    return null;
+    const res = await turso.execute({ sql: checkSql, args });
+    if (res.rows.length === 0) return null;
+
+    const video = mapVideoRow(res.rows[0]);
+    await turso.execute({ sql: "DELETE FROM videos WHERE id = ?;", args: [id] });
+    return video;
   }
 };
+
+function mapUserRow(r) {
+  return {
+    id: r.id,
+    username: r.username,
+    email: r.email || '',
+    phone: r.phone || '',
+    passwordHash: r.passwordHash,
+    role: r.role || 'user',
+    isBlocked: !!r.isBlocked,
+    createdAt: r.createdAt
+  };
+}
+
+function mapVideoRow(r) {
+  return {
+    id: r.id,
+    title: r.title,
+    url: r.url,
+    embedUrl: r.embedUrl,
+    embedType: r.embedType,
+    thumbnailUrl: r.thumbnailUrl,
+    description: r.description || '',
+    category: r.category || 'General',
+    uploaderId: r.uploaderId,
+    uploaderName: r.uploaderName,
+    createdAt: r.createdAt
+  };
+}
 
 module.exports = db;
