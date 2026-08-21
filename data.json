@@ -19,6 +19,16 @@
       "role": "user",
       "isBlocked": false,
       "createdAt": "2026-08-21T11:21:13.981Z"
+    },
+    {
+      "id": "usr_1787311717402_9p7a9",
+      "username": "forgot_user_7249",
+      "email": "forgot_1787311717249@example.com",
+      "phone": "+19876543836",
+      "passwordHash": "$2a$10$d1xV51rTVAxNa1YTzRqEw.h7wrtYqzXIGY244NCjMy3R9NiuDDeMS",
+      "role": "user",
+      "isBlocked": false,
+      "createdAt": "2026-08-21T11:28:37.402Z"
     }
   ],
   "videos": []

@@ -16,7 +16,7 @@ let currentPlayingVideo = null;
 let isAudioMuted = false;
 let forgotPasswordUserId = null;
 
-// Standalone LocalStorage Database (Used if running without Node.js server or file://)
+// Standalone LocalStorage Database
 const STANDALONE_KEY = 'my_videos_standalone_db_2026';
 const defaultStandaloneData = {
   users: [
@@ -105,7 +105,7 @@ function saveLocalData(data) {
   localStorage.setItem(STANDALONE_KEY, JSON.stringify(data));
 }
 
-// Universal API Dispatcher (Tries Server Endpoint, Falls Back to Standalone LocalStorage DB)
+// Universal API Dispatcher
 async function requestApi(endpoint, method = 'GET', body = null, authToken = null) {
   const isFileProtocol = window.location.protocol === 'file:';
   
@@ -180,14 +180,24 @@ async function requestApi(endpoint, method = 'GET', body = null, authToken = nul
   if (endpoint === '/auth/login') {
     const { username, password } = body;
     const clean = username.trim().toLowerCase();
-    const user = dbData.users.find(u => 
-      u.username.toLowerCase() === clean || 
-      (u.email && u.email.toLowerCase() === clean) ||
-      (u.phone && u.phone === username.trim())
-    );
+    const digits = username.replace(/\D/g, '');
 
-    if (!user || user.password !== password) {
-      return { ok: false, error: 'Invalid login credentials.', status: 400 };
+    const user = dbData.users.find(u => {
+      const uPhoneDigits = u.phone ? u.phone.replace(/\D/g, '') : '';
+      return (
+        u.username.toLowerCase() === clean || 
+        (u.email && u.email.toLowerCase() === clean) ||
+        (u.phone && u.phone.toLowerCase() === clean) ||
+        (digits.length >= 5 && uPhoneDigits && uPhoneDigits.endsWith(digits))
+      );
+    });
+
+    if (!user) {
+      return { ok: false, error: `Account '${username.trim()}' not found. Please check spelling or click Sign Up to create an account.`, status: 400 };
+    }
+
+    if (user.password !== password) {
+      return { ok: false, error: 'Incorrect password. Please try again or click Forgot Password.', status: 400 };
     }
 
     if (user.isBlocked) {
@@ -283,8 +293,20 @@ async function requestApi(endpoint, method = 'GET', body = null, authToken = nul
 
   if (endpoint === '/auth/forgot-password-otp') {
     const clean = body.identifier.trim().toLowerCase();
-    const found = dbData.users.find(u => u.username.toLowerCase() === clean || (u.phone && u.phone === body.identifier.trim()));
-    if (!found) return { ok: false, error: 'Account not found.', status: 404 };
+    const digits = body.identifier.replace(/\D/g, '');
+    const found = dbData.users.find(u => {
+      const uPhoneDigits = u.phone ? u.phone.replace(/\D/g, '') : '';
+      return (
+        u.username.toLowerCase() === clean || 
+        (u.email && u.email.toLowerCase() === clean) ||
+        (u.phone && u.phone.toLowerCase() === clean) ||
+        (digits.length >= 5 && uPhoneDigits && uPhoneDigits.endsWith(digits))
+      );
+    });
+
+    if (!found) {
+      return { ok: false, error: `Account '${body.identifier.trim()}' not found. Please check spelling or click Sign Up to create an account.`, status: 404 };
+    }
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     dbData.otps[found.phone || 'forgot'] = code;
     saveLocalData(dbData);
@@ -1029,7 +1051,7 @@ function showLandingTab(tab) {
   } else {
     loginForm.style.display = 'none';
     signupForm.style.display = 'flex';
-    tabLoginBtn.classList.remove('active');
+    tabLoginBtn.remove && tabLoginBtn.classList.remove('active');
     tabSignupBtn.classList.add('active');
   }
 }

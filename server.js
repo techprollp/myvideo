@@ -128,7 +128,7 @@ app.post('/api/auth/forgot-password-otp', (req, res) => {
 
     const user = db.getUserByIdentifier(identifier);
     if (!user) {
-      return res.status(404).json({ error: 'No account found matching that Username or Phone Number.' });
+      return res.status(404).json({ error: `Account '${identifier.trim()}' not found. Please check spelling or click Sign Up to create an account.` });
     }
 
     const phoneToUse = user.phone || '+10000000000';
@@ -262,10 +262,10 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const cleanInput = username.trim();
-    const user = db.getUserByUsername(cleanInput) || db.getUserByEmail(cleanInput) || db.getUserByPhone(cleanInput);
+    const user = db.getUserByIdentifier(cleanInput);
 
     if (!user) {
-      return res.status(400).json({ error: 'Invalid login credentials.' });
+      return res.status(400).json({ error: `Account '${cleanInput}' not found. Please check spelling or Sign Up to create an account.` });
     }
 
     if (user.isBlocked) {
@@ -274,7 +274,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
-      return res.status(400).json({ error: 'Invalid login credentials.' });
+      return res.status(400).json({ error: 'Incorrect password. Please try again or click Forgot Password.' });
     }
 
     const userRole = user.role || 'user';

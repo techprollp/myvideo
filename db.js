@@ -4,7 +4,6 @@ const bcrypt = require('bcryptjs');
 
 const DB_FILE = path.join(__dirname, 'data.json');
 
-// Temporary in-memory store for OTPs
 const otpStore = {};
 
 const defaultData = {
@@ -161,27 +160,37 @@ const db = {
 
   getUserByUsername: (username) => {
     const data = loadDb();
-    return data.users.find(u => u.username.toLowerCase() === username.toLowerCase());
+    return data.users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
   },
 
   getUserByEmail: (email) => {
     const data = loadDb();
-    return data.users.find(u => u.email && u.email.toLowerCase() === email.toLowerCase());
+    return data.users.find(u => u.email && u.email.toLowerCase() === email.trim().toLowerCase());
   },
 
   getUserByPhone: (phone) => {
     const data = loadDb();
-    return data.users.find(u => u.phone && u.phone === phone);
+    const cleanDigits = phone.replace(/\D/g, '');
+    return data.users.find(u => {
+      const dbPhoneDigits = u.phone ? u.phone.replace(/\D/g, '') : '';
+      return u.phone === phone.trim() || (cleanDigits && dbPhoneDigits && dbPhoneDigits === cleanDigits);
+    });
   },
 
   getUserByIdentifier: (identifier) => {
     const data = loadDb();
     const clean = identifier.trim().toLowerCase();
-    return data.users.find(u => 
-      u.username.toLowerCase() === clean || 
-      (u.phone && u.phone === identifier.trim()) ||
-      (u.email && u.email.toLowerCase() === clean)
-    );
+    const digits = identifier.replace(/\D/g, '');
+
+    return data.users.find(u => {
+      const uPhoneDigits = u.phone ? u.phone.replace(/\D/g, '') : '';
+      return (
+        u.username.toLowerCase() === clean || 
+        (u.email && u.email.toLowerCase() === clean) ||
+        (u.phone && u.phone.toLowerCase() === clean) ||
+        (digits.length >= 5 && uPhoneDigits && uPhoneDigits.endsWith(digits))
+      );
+    });
   },
 
   getUserById: (id) => {
@@ -193,9 +202,9 @@ const db = {
     const data = loadDb();
     const newUser = {
       id: 'usr_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-      username,
-      email: email || '',
-      phone: phone || '',
+      username: username.trim(),
+      email: email ? email.trim() : '',
+      phone: phone ? phone.trim() : '',
       passwordHash,
       role,
       isBlocked: false,
@@ -206,7 +215,6 @@ const db = {
     return newUser;
   },
 
-  // Reset user password
   resetUserPassword: (userId, newPasswordHash) => {
     const data = loadDb();
     const user = data.users.find(u => u.id === userId);
