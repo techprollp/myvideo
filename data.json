@@ -1,0 +1,15 @@
+{
+  "users": [
+    {
+      "id": "admin_1",
+      "username": "Admin_shareef",
+      "passwordHash": "$2a$10$AQ0DOgsVP2dOZFOw0WpyL.wzLf4p/KfIsJf.A1KzWjv8/w9eulLPC",
+      "role": "admin",
+      "createdAt": "2026-08-21T10:43:31.140Z",
+      "email": "admin@myvideos.com",
+      "phone": "+10000000000",
+      "isBlocked": false
+    }
+  ],
+  "videos": []
+}

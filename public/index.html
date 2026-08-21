@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <meta name="theme-color" content="#0f1015">
+  <title>My Videos - Stream & Share Videos</title>
+  
+  <!-- Live Video Play Button Favicon Icon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='48' fill='%23ff3b5c'/><polygon points='40,30 72,50 40,70' fill='%23ffffff'/></svg>">
+
+  <!-- Google Fonts & FontAwesome -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Navigation Header -->
+  <header class="navbar">
+    <div class="nav-container">
+      <div class="nav-left">
+        <a href="#" class="brand-logo" onclick="location.reload(); return false;">
+          <i class="fa-solid fa-play-circle logo-icon"></i>
+          <span>My <span class="highlight">Videos</span></span>
+        </a>
+      </div>
+
+      <!-- Search Box (Only Visible When Logged In) -->
+      <div class="nav-center" id="navSearchContainer" style="display: none;">
+        <div class="search-box">
+          <i class="fa-solid fa-magnifying-glass search-icon"></i>
+          <input type="text" id="searchInput" placeholder="Search videos by title, uploader..." onkeyup="handleSearch(event)">
+          <button class="clear-search-btn" id="clearSearchBtn" onclick="clearSearch()" style="display:none;">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="nav-right">
+        <!-- Guest Controls -->
+        <div id="guestControls" class="auth-buttons">
+          <button class="btn btn-outline" onclick="showLandingTab('login')">
+            <i class="fa-solid fa-right-to-bracket"></i> Login
+          </button>
+          <button class="btn btn-primary" onclick="showLandingTab('signup')">
+            <i class="fa-solid fa-user-plus"></i> Sign Up
+          </button>
+        </div>
+
+        <!-- Logged-in Controls -->
+        <div id="userControls" class="user-menu" style="display: none;">
+          <!-- Admin Only Panel Button -->
+          <button id="adminPanelNavBtn" class="btn btn-admin-panel" onclick="openAdminPanelModal()" style="display: none;">
+            <i class="fa-solid fa-user-gear"></i> Admin Panel
+          </button>
+
+          <!-- Admin Only Upload Button -->
+          <button id="adminUploadBtn" class="btn btn-upload" onclick="openUploadModal()" style="display: none;">
+            <i class="fa-solid fa-cloud-arrow-up"></i> Upload Video
+          </button>
+
+          <div class="user-profile-badge">
+            <i class="fa-solid fa-user-circle avatar-icon"></i>
+            <span id="navUsername" class="username-text">User</span>
+            <span id="navUserRoleBadge" class="role-badge">Member</span>
+          </div>
+
+          <!-- Explicit Sign Out Button -->
+          <button class="btn btn-signout" onclick="handleLogout()" title="Sign Out of your account">
+            <i class="fa-solid fa-right-from-bracket"></i> <span>Sign Out</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Category Filter Pills Bar (Only Visible When Logged In) -->
+  <section class="categories-bar" id="categoriesBar" style="display: none;">
+    <div class="categories-container" id="categoriesContainer">
+      <button class="cat-pill active" onclick="selectCategory('All', this)">All</button>
+      <button class="cat-pill" onclick="selectCategory('Animation', this)">Animation</button>
+      <button class="cat-pill" onclick="selectCategory('Sci-Fi', this)">Sci-Fi</button>
+      <button class="cat-pill" onclick="selectCategory('Nature', this)">Nature</button>
+      <button class="cat-pill" onclick="selectCategory('Music', this)">Music</button>
+      <button class="cat-pill" onclick="selectCategory('Gaming', this)">Gaming</button>
+      <button class="cat-pill" onclick="selectCategory('Tech', this)">Tech</button>
+      <button class="cat-pill" onclick="selectCategory('Fantasy', this)">Fantasy</button>
+    </div>
+  </section>
+
+  <!-- GATED FIRST PAGE: LANDING VIEW -->
+  <section id="guestLandingSection" class="landing-section">
+    <div class="landing-card">
+      <div class="landing-header">
+        <div class="landing-icon-wrapper">
+          <i class="fa-solid fa-lock landing-icon"></i>
+        </div>
+        <h2>Welcome to <span class="highlight">My Videos</span></h2>
+        <p>Please log in or create an account to view and watch video streams.</p>
+      </div>
+
+      <!-- Auth Tabs Header -->
+      <div class="auth-tabs">
+        <button id="landingTabLoginBtn" class="auth-tab active" onclick="showLandingTab('login')">
+          <i class="fa-solid fa-right-to-bracket"></i> Login
+        </button>
+        <button id="landingTabSignupBtn" class="auth-tab" onclick="showLandingTab('signup')">
+          <i class="fa-solid fa-user-plus"></i> Sign Up
+        </button>
+      </div>
+
+      <!-- Alert Notification Area -->
+      <div id="landingAuthAlert" class="alert-box" style="display: none;"></div>
+
+      <!-- Login Form -->
+      <form id="landingLoginForm" class="auth-form" onsubmit="handleLoginSubmit(event)">
+        <div class="form-group">
+          <label for="loginUsername"><i class="fa-solid fa-user"></i> Username, Email, or Phone</label>
+          <input type="text" id="loginUsername" placeholder="Enter username, email or phone" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label for="loginPassword"><i class="fa-solid fa-lock"></i> Password</label>
+          <input type="password" id="loginPassword" placeholder="Enter your password" required autocomplete="current-password">
+        </div>
+
+        <div class="form-help-row">
+          <a href="#" class="forgot-password-link" onclick="openForgotPasswordModal(); return false;">
+            <i class="fa-solid fa-key"></i> Forgot Password?
+          </a>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block btn-lg">
+          <i class="fa-solid fa-right-to-bracket"></i> Login & Watch Videos
+        </button>
+        <p class="auth-switch-note">
+          Don't have an account yet? <a href="#" onclick="showLandingTab('signup'); return false;">Sign up here</a>
+        </p>
+      </form>
+
+      <!-- Signup Form -->
+      <form id="landingSignupForm" class="auth-form" onsubmit="handleSignupSubmit(event)" style="display: none;">
+        <div class="form-group">
+          <label for="signupUsername"><i class="fa-solid fa-user"></i> Username *</label>
+          <input type="text" id="signupUsername" placeholder="Choose a username" required minlength="3">
+        </div>
+
+        <div class="form-group">
+          <label for="signupEmail"><i class="fa-solid fa-envelope"></i> Email ID *</label>
+          <input type="email" id="signupEmail" placeholder="e.g. name@domain.com" required>
+        </div>
+
+        <div class="form-group">
+          <label for="signupPhone"><i class="fa-solid fa-phone"></i> Mobile Phone Number *</label>
+          <div class="input-with-button">
+            <input type="tel" id="signupPhone" placeholder="e.g. +19876543210" required>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="sendMobileOtp()">
+              <i class="fa-solid fa-paper-plane"></i> Send OTP
+            </button>
+          </div>
+        </div>
+
+        <!-- Simulated Mobile OTP Display Box -->
+        <div id="otpDisplayBanner" class="otp-banner" style="display: none;">
+          <i class="fa-solid fa-mobile-screen-button"></i>
+          <span>Simulated SMS Code: <strong id="simulatedOtpCode">123456</strong></span>
+        </div>
+
+        <div class="form-group">
+          <label for="signupOtp"><i class="fa-solid fa-key"></i> Enter Mobile OTP Code *</label>
+          <input type="text" id="signupOtp" placeholder="Enter 6-digit OTP received" required maxlength="6">
+        </div>
+
+        <div class="form-group">
+          <label for="signupPassword"><i class="fa-solid fa-lock"></i> Password *</label>
+          <input type="password" id="signupPassword" placeholder="At least 4 characters" required minlength="4">
+        </div>
+
+        <div class="form-group">
+          <label for="signupPasswordConfirm"><i class="fa-solid fa-shield-halved"></i> Confirm Password *</label>
+          <input type="password" id="signupPasswordConfirm" placeholder="Re-enter password" required minlength="4">
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block btn-lg">
+          <i class="fa-solid fa-user-check"></i> Verify OTP & Create Account
+        </button>
+
+        <p class="auth-switch-note">
+          Already registered? <a href="#" onclick="showLandingTab('login'); return false;">Log in here</a>
+        </p>
+      </form>
+    </div>
+  </section>
+
+  <!-- MAIN VIDEO FEED CONTAINER -->
+  <main id="loggedInFeedSection" class="main-container" style="display: none;">
+    <div class="section-header">
+      <h2 id="feedTitle" class="section-title"><i class="fa-solid fa-fire text-accent"></i> Recommended Videos</h2>
+      <span id="videoCountBadge" class="count-badge">0 videos</span>
+    </div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="empty-state" style="display: none;">
+      <i class="fa-solid fa-film empty-icon"></i>
+      <h3>No videos found</h3>
+      <p id="emptyStateText">No videos match your search or filter.</p>
+    </div>
+
+    <!-- Videos Grid Feed -->
+    <div id="videoGrid" class="video-grid">
+      <!-- Dynamic Video Cards inserted here -->
+    </div>
+  </main>
+
+  <!-- FORGOT PASSWORD MODAL -->
+  <div id="forgotPasswordModal" class="modal-overlay" onclick="closeForgotPasswordOnOverlay(event)">
+    <div class="modal-content modal-md">
+      <button class="modal-close-btn" onclick="closeForgotPasswordModal()">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+
+      <div class="modal-header">
+        <h2><i class="fa-solid fa-key text-accent"></i> Reset Your Password</h2>
+        <p>Enter your Username or Mobile Phone Number to receive a reset verification OTP.</p>
+      </div>
+
+      <div id="forgotAlert" class="alert-box" style="display: none;"></div>
+
+      <!-- Step 1: Input Identifier -->
+      <form id="forgotStep1Form" class="auth-form" onsubmit="handleForgotStep1Submit(event)">
+        <div class="form-group">
+          <label for="forgotIdentifier"><i class="fa-solid fa-user-gear"></i> Username or Phone Number *</label>
+          <input type="text" id="forgotIdentifier" placeholder="Enter username or mobile phone number" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block btn-lg">
+          <i class="fa-solid fa-paper-plane"></i> Send Password Reset OTP
+        </button>
+      </form>
+
+      <!-- Step 2: OTP Verification & New Password -->
+      <form id="forgotStep2Form" class="auth-form" onsubmit="handleForgotStep2Submit(event)" style="display: none;">
+        <div id="forgotOtpDisplayBanner" class="otp-banner" style="margin-bottom: 12px;">
+          <i class="fa-solid fa-mobile-screen-button"></i>
+          <span>Simulated Reset OTP: <strong id="forgotSimulatedCode">123456</strong></span>
+        </div>
+
+        <div class="form-group">
+          <label for="forgotOtpCode"><i class="fa-solid fa-shield-halved"></i> Enter 6-Digit Reset OTP *</label>
+          <input type="text" id="forgotOtpCode" placeholder="Enter OTP code received" required maxlength="6">
+        </div>
+
+        <div class="form-group">
+          <label for="forgotNewPassword"><i class="fa-solid fa-lock"></i> Choose New Password *</label>
+          <input type="password" id="forgotNewPassword" placeholder="At least 4 characters" required minlength="4">
+        </div>
+
+        <div class="form-group">
+          <label for="forgotNewPasswordConfirm"><i class="fa-solid fa-check-double"></i> Confirm New Password *</label>
+          <input type="password" id="forgotNewPasswordConfirm" placeholder="Re-enter new password" required minlength="4">
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block btn-lg">
+          <i class="fa-solid fa-floppy-disk"></i> Save New Password & Login
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ADMIN PANEL MODAL -->
+  <div id="adminPanelModal" class="modal-overlay" onclick="closeAdminPanelOnOverlay(event)">
+    <div class="modal-content modal-xl">
+      <button class="modal-close-btn" onclick="closeAdminPanelModal()">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+
+      <div class="modal-header">
+        <h2><i class="fa-solid fa-user-gear text-accent"></i> Admin Control Panel</h2>
+        <p>Manage registered users, block/unblock accounts, delete video links, and change Admin credentials.</p>
+      </div>
+
+      <!-- Admin Panel Tabs Header -->
+      <div class="auth-tabs">
+        <button id="adminTabUsersBtn" class="auth-tab active" onclick="switchAdminTab('users')">
+          <i class="fa-solid fa-users"></i> Registered Users (<span id="adminUsersCount">0</span>)
+        </button>
+        <button id="adminTabVideosBtn" class="auth-tab" onclick="switchAdminTab('videos')">
+          <i class="fa-solid fa-photo-film"></i> Manage Videos (<span id="adminVideosCount">0</span>)
+        </button>
+        <button id="adminTabSettingsBtn" class="auth-tab" onclick="switchAdminTab('settings')">
+          <i class="fa-solid fa-key"></i> Change Admin Password
+        </button>
+      </div>
+
+      <!-- SECTION 1: REGISTERED USERS TABLE -->
+      <div id="adminUsersSection" class="admin-tab-content">
+        <div class="table-responsive">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th>Email ID</th>
+                <th>Phone Number</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Joined Date</th>
+                <th>Admin Actions</th>
+              </tr>
+            </thead>
+            <tbody id="adminUsersTableBody">
+              <!-- Users populated dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SECTION 2: VIDEO MANAGEMENT TABLE -->
+      <div id="adminVideosSection" class="admin-tab-content" style="display: none;">
+        <div class="table-responsive">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Preview</th>
+                <th>Video Title</th>
+                <th>Type</th>
+                <th>Category</th>
+                <th>Uploader</th>
+                <th>Date Added</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="adminVideosTableBody">
+              <!-- Video links populated dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SECTION 3: CHANGE ADMIN USERNAME & PASSWORD -->
+      <div id="adminSettingsSection" class="admin-tab-content" style="display: none;">
+        <div class="admin-settings-card">
+          <h3><i class="fa-solid fa-user-shield text-accent"></i> Change Admin Credentials</h3>
+          <p class="form-help" style="margin-bottom: 16px;">Update the Admin username and password for this platform.</p>
+
+          <div id="adminSettingsAlert" class="alert-box" style="display: none;"></div>
+
+          <form id="adminCredentialsForm" onsubmit="handleAdminCredentialsSubmit(event)">
+            <div class="form-group">
+              <label for="adminCurrentPassword"><i class="fa-solid fa-lock"></i> Current Admin Password *</label>
+              <input type="password" id="adminCurrentPassword" placeholder="Enter current admin password" required>
+            </div>
+
+            <div class="form-group">
+              <label for="adminNewUsername"><i class="fa-solid fa-user-pen"></i> New Admin Username (Optional)</label>
+              <input type="text" id="adminNewUsername" placeholder="Leave empty to keep current username">
+            </div>
+
+            <div class="form-group">
+              <label for="adminNewPassword"><i class="fa-solid fa-key"></i> New Admin Password (Optional)</label>
+              <input type="password" id="adminNewPassword" placeholder="Enter new password (at least 4 characters)">
+            </div>
+
+            <div class="form-group">
+              <label for="adminNewPasswordConfirm"><i class="fa-solid fa-check-double"></i> Confirm New Admin Password</label>
+              <input type="password" id="adminNewPasswordConfirm" placeholder="Re-enter new password">
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block btn-lg">
+              <i class="fa-solid fa-floppy-disk"></i> Update Admin Credentials
+            </button>
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- VIDEO PLAYER MODAL -->
+  <div id="playerModal" class="modal-overlay" onclick="closePlayerModalOnOverlay(event)">
+    <div class="modal-content modal-lg">
+      <button class="modal-close-btn" onclick="closePlayerModal()">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+
+      <div class="player-container" id="playerContainer">
+        <!-- Dynamic iframe or HTML5 video player inserted here -->
+      </div>
+
+      <div class="player-controls-bar">
+        <button id="playerMuteBtn" class="btn btn-secondary btn-sm" onclick="toggleAudioMute()">
+          <i class="fa-solid fa-volume-high"></i> <span id="muteBtnText">Mute Audio</span>
+        </button>
+        <button id="playerFullscreenBtn" class="btn btn-secondary btn-sm" onclick="toggleFullscreen()">
+          <i class="fa-solid fa-expand"></i> <span>Fullscreen</span>
+        </button>
+      </div>
+
+      <div class="player-details">
+        <div class="player-header">
+          <h2 id="modalVideoTitle">Video Title</h2>
+          <span id="modalVideoCategory" class="badge-category">Category</span>
+        </div>
+
+        <div class="player-meta">
+          <div class="meta-uploader">
+            <i class="fa-solid fa-circle-user"></i>
+            <span>Uploaded by <strong id="modalVideoUploader">Admin</strong></span>
+          </div>
+          <div class="meta-date">
+            <i class="fa-solid fa-clock"></i>
+            <span id="modalVideoDate">Date</span>
+          </div>
+        </div>
+
+        <p id="modalVideoDescription" class="player-description">Description text...</p>
+
+        <div class="player-actions">
+          <button class="btn btn-secondary" onclick="copyVideoUrl()">
+            <i class="fa-solid fa-share-nodes"></i> Copy Video Link
+          </button>
+          <div id="modalDeleteContainer" style="display: inline-block;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- UPLOAD VIDEO MODAL (ADMIN ONLY) -->
+  <div id="uploadModal" class="modal-overlay" onclick="closeUploadModalOnOverlay(event)">
+    <div class="modal-content modal-md">
+      <button class="modal-close-btn" onclick="closeUploadModal()">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+
+      <div class="modal-header">
+        <h2><i class="fa-solid fa-cloud-arrow-up text-accent"></i> Admin: Upload Video Link</h2>
+        <p>Add YouTube videos, Vimeo links, or direct MP4 URLs to backend. Published videos will be visible to all signed-up users.</p>
+      </div>
+
+      <div id="uploadAlert" class="alert-box" style="display: none;"></div>
+
+      <form id="uploadForm" onsubmit="handleUploadSubmit(event)">
+        <div class="form-group">
+          <label for="videoTitle"><i class="fa-solid fa-heading"></i> Video Title *</label>
+          <input type="text" id="videoTitle" placeholder="e.g. Cyberpunk Cinematic Trailer" required>
+        </div>
+
+        <div class="form-group">
+          <label for="videoUrl"><i class="fa-solid fa-link"></i> Video Link URL *</label>
+          <input type="url" id="videoUrl" placeholder="https://www.youtube.com/watch?v=... or https://site.com/video.mp4" required oninput="detectUrlType()">
+          <small class="form-help">Supports YouTube URLs, Vimeo URLs, and direct video file links (.mp4, .webm)</small>
+          <div id="urlTypePreview" class="url-badge-preview" style="display:none;"></div>
+        </div>
+
+        <div class="form-group">
+          <label for="videoCategory"><i class="fa-solid fa-tags"></i> Category</label>
+          <select id="videoCategory">
+            <option value="General">General</option>
+            <option value="Animation">Animation</option>
+            <option value="Sci-Fi">Sci-Fi</option>
+            <option value="Nature">Nature</option>
+            <option value="Music">Music</option>
+            <option value="Gaming">Gaming</option>
+            <option value="Tech">Tech</option>
+            <option value="Fantasy">Fantasy</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="videoThumbnail"><i class="fa-solid fa-image"></i> Custom Thumbnail Image URL (Optional)</label>
+          <input type="url" id="videoThumbnail" placeholder="Leave empty for auto-generated thumbnail">
+        </div>
+
+        <div class="form-group">
+          <label for="videoDescription"><i class="fa-solid fa-align-left"></i> Description (Optional)</label>
+          <textarea id="videoDescription" rows="3" placeholder="Write a short summary about this video..."></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block btn-lg">
+          <i class="fa-solid fa-paper-plane"></i> Publish Video Link (Admin)
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>&copy; 2026 My Videos. Share, Upload & Enjoy Video Streaming.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
