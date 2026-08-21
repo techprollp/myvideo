@@ -9,6 +9,16 @@
       "email": "admin@myvideos.com",
       "phone": "+10000000000",
       "isBlocked": false
+    },
+    {
+      "id": "usr_1787311273981_5y5cj",
+      "username": "forgot_user_3801",
+      "email": "forgot_1787311273801@example.com",
+      "phone": "+19876543873",
+      "passwordHash": "$2a$10$jMaldUM/mcEFsLtnH5kp5ejg8SMb6G1ymH.IXBucOOYyT0aCB1eBS",
+      "role": "user",
+      "isBlocked": false,
+      "createdAt": "2026-08-21T11:21:13.981Z"
     }
   ],
   "videos": []

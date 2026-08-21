@@ -1,5 +1,6 @@
 /* ==========================================================================
-   MY VIDEOS PLATFORM - CLIENT JAVASCRIPT (WITH FORGOT PASSWORD & OTP RESET)
+   MY VIDEOS PLATFORM - DUAL-MODE CLIENT JAVASCRIPT
+   Supports both Express Node.js Server API & Standalone HTML/CSS/JS Browser Mode
    ========================================================================== */
 
 const API_BASE = '/api';
@@ -14,6 +15,332 @@ let searchQuery = '';
 let currentPlayingVideo = null;
 let isAudioMuted = false;
 let forgotPasswordUserId = null;
+
+// Standalone LocalStorage Database (Used if running without Node.js server or file://)
+const STANDALONE_KEY = 'my_videos_standalone_db_2026';
+const defaultStandaloneData = {
+  users: [
+    {
+      id: 'admin_1',
+      username: 'admin',
+      email: 'admin@myvideos.com',
+      phone: '+10000000000',
+      password: 'admin123',
+      role: 'admin',
+      isBlocked: false,
+      createdAt: new Date().toISOString()
+    }
+  ],
+  videos: [
+    {
+      id: "vid_seed_1",
+      title: "Big Buck Bunny - Animated Short Film",
+      url: "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
+      embedUrl: "https://www.youtube.com/embed/aqz-KE-bpKQ?autoplay=1&enablejsapi=1",
+      embedType: "youtube",
+      thumbnailUrl: "https://img.youtube.com/vi/aqz-KE-bpKQ/maxresdefault.jpg",
+      description: "Classic open-source animated short film created by the Blender Institute.",
+      category: "Animation",
+      uploaderId: "admin_1",
+      uploaderName: "admin",
+      createdAt: new Date(Date.now() - 86400000 * 3).toISOString()
+    },
+    {
+      id: "vid_seed_2",
+      title: "Tears of Steel - Sci-Fi Short",
+      url: "https://www.youtube.com/watch?v=r6Lie3sI072",
+      embedUrl: "https://www.youtube.com/embed/r6Lie3sI072?autoplay=1&enablejsapi=1",
+      embedType: "youtube",
+      thumbnailUrl: "https://img.youtube.com/vi/r6Lie3sI072/maxresdefault.jpg",
+      description: "Visual effects open movie project set in dystopian Amsterdam.",
+      category: "Sci-Fi",
+      uploaderId: "admin_1",
+      uploaderName: "admin",
+      createdAt: new Date(Date.now() - 86400000 * 2).toISOString()
+    },
+    {
+      id: "vid_seed_3",
+      title: "Nature Wildlife & Forest Streams (Direct MP4)",
+      url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+      embedUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+      embedType: "video",
+      thumbnailUrl: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&q=80",
+      description: "High definition nature footage streaming directly via standard MP4 link.",
+      category: "Nature",
+      uploaderId: "admin_1",
+      uploaderName: "admin",
+      createdAt: new Date(Date.now() - 86400000 * 1).toISOString()
+    },
+    {
+      id: "vid_seed_4",
+      title: "Sintel - Fantasy Quest",
+      url: "https://www.youtube.com/watch?v=eRsGyueVLvQ",
+      embedUrl: "https://www.youtube.com/embed/eRsGyueVLvQ?autoplay=1&enablejsapi=1",
+      embedType: "youtube",
+      thumbnailUrl: "https://img.youtube.com/vi/eRsGyueVLvQ/maxresdefault.jpg",
+      description: "An epic dragon fantasy story produced by Blender Foundation.",
+      category: "Fantasy",
+      uploaderId: "admin_1",
+      uploaderName: "admin",
+      createdAt: new Date().toISOString()
+    }
+  ],
+  otps: {}
+};
+
+function getLocalData() {
+  try {
+    const raw = localStorage.getItem(STANDALONE_KEY);
+    if (!raw) {
+      localStorage.setItem(STANDALONE_KEY, JSON.stringify(defaultStandaloneData));
+      return defaultStandaloneData;
+    }
+    return JSON.parse(raw);
+  } catch (e) {
+    return defaultStandaloneData;
+  }
+}
+
+function saveLocalData(data) {
+  localStorage.setItem(STANDALONE_KEY, JSON.stringify(data));
+}
+
+// Universal API Dispatcher (Tries Server Endpoint, Falls Back to Standalone LocalStorage DB)
+async function requestApi(endpoint, method = 'GET', body = null, authToken = null) {
+  const isFileProtocol = window.location.protocol === 'file:';
+  
+  if (!isFileProtocol) {
+    try {
+      const headers = {};
+      if (body) headers['Content-Type'] = 'application/json';
+      if (authToken || token) headers['Authorization'] = `Bearer ${authToken || token}`;
+
+      const options = { method, headers };
+      if (body) options.body = JSON.stringify(body);
+
+      const res = await fetch(`${API_BASE}${endpoint}`, options);
+      const data = await res.json();
+
+      if (res.ok) return { ok: true, data, status: res.status };
+      return { ok: false, error: data.error || 'Request failed.', status: res.status };
+    } catch (err) {
+      console.warn("Backend server not reachable, switching to Standalone HTML/CSS/JS mode...", err);
+    }
+  }
+
+  // --- STANDALONE BROWSER LOCALSTORAGE FALLBACK ---
+  const dbData = getLocalData();
+
+  if (endpoint === '/auth/me') {
+    if (!authToken && !token) return { ok: false, error: 'No token provided.', status: 401 };
+    const savedUser = JSON.parse(localStorage.getItem('my_videos_saved_user') || 'null');
+    if (!savedUser) return { ok: false, error: 'Session expired.', status: 401 };
+
+    const freshUser = dbData.users.find(u => u.id === savedUser.id);
+    if (!freshUser) return { ok: false, error: 'User deleted.', status: 401 };
+    if (freshUser.isBlocked) return { ok: false, error: 'Your account has been blocked by Admin.', status: 403 };
+
+    return { ok: true, data: { user: freshUser }, status: 200 };
+  }
+
+  if (endpoint === '/auth/send-otp') {
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    dbData.otps[body.phone] = code;
+    saveLocalData(dbData);
+    return { ok: true, data: { message: `OTP sent to ${body.phone}`, phone: body.phone, demoOtp: code }, status: 200 };
+  }
+
+  if (endpoint === '/auth/signup') {
+    const { username, email, phone, password, otp } = body;
+    if (dbData.users.find(u => u.username.toLowerCase() === username.trim().toLowerCase())) {
+      return { ok: false, error: 'Username is already registered.', status: 400 };
+    }
+    if (dbData.otps[phone] && dbData.otps[phone] !== otp.trim()) {
+      return { ok: false, error: 'Invalid OTP verification code.', status: 400 };
+    }
+
+    const newUser = {
+      id: 'usr_' + Date.now(),
+      username: username.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
+      password: password,
+      role: 'user',
+      isBlocked: false,
+      createdAt: new Date().toISOString()
+    };
+    dbData.users.push(newUser);
+    saveLocalData(dbData);
+
+    const fakeToken = 'standalone_token_' + newUser.id;
+    localStorage.setItem('my_videos_saved_user', JSON.stringify(newUser));
+    return { ok: true, data: { message: 'Account created!', token: fakeToken, user: newUser }, status: 201 };
+  }
+
+  if (endpoint === '/auth/login') {
+    const { username, password } = body;
+    const clean = username.trim().toLowerCase();
+    const user = dbData.users.find(u => 
+      u.username.toLowerCase() === clean || 
+      (u.email && u.email.toLowerCase() === clean) ||
+      (u.phone && u.phone === username.trim())
+    );
+
+    if (!user || user.password !== password) {
+      return { ok: false, error: 'Invalid login credentials.', status: 400 };
+    }
+
+    if (user.isBlocked) {
+      return { ok: false, error: 'Your account has been blocked by Admin.', status: 403 };
+    }
+
+    const fakeToken = 'standalone_token_' + user.id;
+    localStorage.setItem('my_videos_saved_user', JSON.stringify(user));
+    return { ok: true, data: { message: 'Logged in!', token: fakeToken, user }, status: 200 };
+  }
+
+  if (endpoint.startsWith('/videos') && method === 'GET') {
+    let videos = [...dbData.videos];
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      videos = videos.filter(v => v.title.toLowerCase().includes(q) || v.uploaderName.toLowerCase().includes(q));
+    }
+    if (activeCategory && activeCategory !== 'All') {
+      videos = videos.filter(v => v.category.toLowerCase() === activeCategory.toLowerCase());
+    }
+    return { ok: true, data: videos.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)), status: 200 };
+  }
+
+  if (endpoint === '/videos' && method === 'POST') {
+    if (!currentUser || currentUser.role !== 'admin') {
+      return { ok: false, error: 'Only Admin can upload videos.', status: 403 };
+    }
+    const parsed = parseVideoUrl(body.url);
+    const newVid = {
+      id: 'vid_' + Date.now(),
+      title: body.title,
+      url: parsed.url,
+      embedUrl: parsed.embedUrl,
+      embedType: parsed.embedType,
+      thumbnailUrl: body.thumbnailUrl || parsed.thumbnailUrl,
+      description: body.description || '',
+      category: body.category || 'General',
+      uploaderId: currentUser.id,
+      uploaderName: currentUser.username,
+      createdAt: new Date().toISOString()
+    };
+    dbData.videos.unshift(newVid);
+    saveLocalData(dbData);
+    return { ok: true, data: { message: 'Video published!', video: newVid }, status: 201 };
+  }
+
+  if (endpoint.startsWith('/videos/') && method === 'DELETE') {
+    const vidId = endpoint.replace('/videos/', '');
+    const idx = dbData.videos.findIndex(v => v.id === vidId);
+    if (idx !== -1) {
+      dbData.videos.splice(idx, 1);
+      saveLocalData(dbData);
+      return { ok: true, data: { message: 'Video deleted!' }, status: 200 };
+    }
+    return { ok: false, error: 'Video not found.', status: 404 };
+  }
+
+  if (endpoint === '/admin/users' && method === 'GET') {
+    return { ok: true, data: dbData.users, status: 200 };
+  }
+
+  if (endpoint.includes('/admin/users/') && endpoint.endsWith('/block')) {
+    const userId = endpoint.split('/')[3];
+    const target = dbData.users.find(u => u.id === userId);
+    if (target) {
+      target.isBlocked = !target.isBlocked;
+      saveLocalData(dbData);
+      return { ok: true, data: { message: `User status updated.` }, status: 200 };
+    }
+  }
+
+  if (endpoint.startsWith('/admin/users/') && method === 'DELETE') {
+    const userId = endpoint.replace('/admin/users/', '');
+    const idx = dbData.users.findIndex(u => u.id === userId && u.role !== 'admin');
+    if (idx !== -1) {
+      dbData.users.splice(idx, 1);
+      saveLocalData(dbData);
+      return { ok: true, data: { message: 'User deleted.' }, status: 200 };
+    }
+  }
+
+  if (endpoint === '/admin/credentials' && method === 'PUT') {
+    const admin = dbData.users.find(u => u.id === currentUser.id);
+    if (admin.password !== body.currentPassword) {
+      return { ok: false, error: 'Incorrect current password.', status: 400 };
+    }
+    if (body.newUsername) admin.username = body.newUsername.trim();
+    if (body.newPassword) admin.password = body.newPassword.trim();
+    saveLocalData(dbData);
+    localStorage.setItem('my_videos_saved_user', JSON.stringify(admin));
+    return { ok: true, data: { message: 'Credentials updated!', token: 'standalone_token_' + admin.id, user: admin }, status: 200 };
+  }
+
+  if (endpoint === '/auth/forgot-password-otp') {
+    const clean = body.identifier.trim().toLowerCase();
+    const found = dbData.users.find(u => u.username.toLowerCase() === clean || (u.phone && u.phone === body.identifier.trim()));
+    if (!found) return { ok: false, error: 'Account not found.', status: 404 };
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    dbData.otps[found.phone || 'forgot'] = code;
+    saveLocalData(dbData);
+    return { ok: true, data: { userId: found.id, demoOtp: code }, status: 200 };
+  }
+
+  if (endpoint === '/auth/reset-password') {
+    const user = dbData.users.find(u => u.id === body.userId);
+    if (!user) return { ok: false, error: 'User not found.', status: 404 };
+    user.password = body.newPassword.trim();
+    saveLocalData(dbData);
+    return { ok: true, data: { message: 'Password reset successfully!' }, status: 200 };
+  }
+
+  return { ok: false, error: 'Endpoint not implemented in standalone mode.', status: 404 };
+}
+
+// Helper to parse Video URL
+function parseVideoUrl(inputUrl) {
+  let url = inputUrl.trim();
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = 'https://' + url;
+  }
+
+  const ytRegExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|shorts\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const ytMatch = url.match(ytRegExp);
+
+  if (ytMatch && ytMatch[2].length === 11) {
+    const videoId = ytMatch[2];
+    return {
+      url: url,
+      embedUrl: `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1`,
+      embedType: 'youtube',
+      thumbnailUrl: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+    };
+  }
+
+  const vimeoRegExp = /https?:\/\/(www\.)?vimeo\.com\/(\d+)/;
+  const vimeoMatch = url.match(vimeoRegExp);
+  if (vimeoMatch && vimeoMatch[2]) {
+    const videoId = vimeoMatch[2];
+    return {
+      url: url,
+      embedUrl: `https://player.vimeo.com/video/${videoId}?autoplay=1`,
+      embedType: 'vimeo',
+      thumbnailUrl: `https://vumbnail.com/${videoId}.jpg`
+    };
+  }
+
+  return {
+    url: url,
+    embedUrl: url,
+    embedType: 'video',
+    thumbnailUrl: 'https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?w=800&q=80'
+  };
+}
 
 // Initialize App on DOM load
 document.addEventListener('DOMContentLoaded', () => {
@@ -31,24 +358,15 @@ async function initApp() {
 // --- AUTHENTICATION STATE & SESSION ---
 
 async function checkAuthSession() {
-  try {
-    const res = await fetch(`${API_BASE}/auth/me`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const data = await res.json();
-    if (res.ok && data.user) {
-      currentUser = data.user;
-      updateAuthUI();
-      await fetchVideos();
-    } else {
-      if (data.error && data.error.includes("blocked")) {
-        showToast("Your account has been blocked by Admin.", "error");
-      }
-      clearTokenSession();
-      updateAuthUI();
+  const result = await requestApi('/auth/me');
+  if (result.ok && result.data.user) {
+    currentUser = result.data.user;
+    updateAuthUI();
+    await fetchVideos();
+  } else {
+    if (result.error && result.error.includes("blocked")) {
+      showToast("Your account has been blocked by Admin.", "error");
     }
-  } catch (err) {
-    console.error("Session check failed:", err);
     clearTokenSession();
     updateAuthUI();
   }
@@ -58,6 +376,7 @@ function clearTokenSession() {
   token = null;
   currentUser = null;
   localStorage.removeItem('my_videos_token');
+  localStorage.removeItem('my_videos_saved_user');
 }
 
 function updateAuthUI() {
@@ -119,26 +438,19 @@ async function sendMobileOtp() {
     return;
   }
 
-  try {
-    const res = await fetch(`${API_BASE}/auth/send-otp`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone })
-    });
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to send OTP.");
-
-    const otpBanner = document.getElementById('otpDisplayBanner');
-    const otpCodeSpan = document.getElementById('simulatedOtpCode');
-    otpCodeSpan.textContent = data.demoOtp;
-    otpBanner.style.display = 'flex';
-
-    document.getElementById('signupOtp').value = data.demoOtp;
-    showToast(`Verification OTP sent to ${phone}! (Code: ${data.demoOtp})`, "success");
-  } catch (err) {
-    showAlert(alertBox, err.message, "error");
+  const result = await requestApi('/auth/send-otp', 'POST', { phone });
+  if (!result.ok) {
+    showAlert(alertBox, result.error, "error");
+    return;
   }
+
+  const otpBanner = document.getElementById('otpDisplayBanner');
+  const otpCodeSpan = document.getElementById('simulatedOtpCode');
+  otpCodeSpan.textContent = result.data.demoOtp;
+  otpBanner.style.display = 'flex';
+
+  document.getElementById('signupOtp').value = result.data.demoOtp;
+  showToast(`Verification OTP sent to ${phone}! (Code: ${result.data.demoOtp})`, "success");
 }
 
 async function handleLoginSubmit(e) {
@@ -146,31 +458,23 @@ async function handleLoginSubmit(e) {
   const username = document.getElementById('loginUsername').value;
   const password = document.getElementById('loginPassword').value;
   const alertBox = document.getElementById('landingAuthAlert');
-
   alertBox.style.display = 'none';
 
-  try {
-    const res = await fetch(`${API_BASE}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
-    });
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Login failed.");
-
-    token = data.token;
-    currentUser = data.user;
-    localStorage.setItem('my_videos_token', token);
-
-    updateAuthUI();
-    showToast(`Logged in successfully as ${currentUser.username} (${currentUser.role.toUpperCase()})`, "success");
-
-    document.getElementById('landingLoginForm').reset();
-    await fetchVideos();
-  } catch (err) {
-    showAlert(alertBox, err.message, "error");
+  const result = await requestApi('/auth/login', 'POST', { username, password });
+  if (!result.ok) {
+    showAlert(alertBox, result.error, "error");
+    return;
   }
+
+  token = result.data.token;
+  currentUser = result.data.user;
+  localStorage.setItem('my_videos_token', token);
+
+  updateAuthUI();
+  showToast(`Logged in successfully as ${currentUser.username} (${currentUser.role.toUpperCase()})`, "success");
+
+  document.getElementById('landingLoginForm').reset();
+  await fetchVideos();
 }
 
 async function handleSignupSubmit(e) {
@@ -182,7 +486,6 @@ async function handleSignupSubmit(e) {
   const password = document.getElementById('signupPassword').value;
   const passwordConfirm = document.getElementById('signupPasswordConfirm').value;
   const alertBox = document.getElementById('landingAuthAlert');
-
   alertBox.style.display = 'none';
 
   if (password !== passwordConfirm) {
@@ -190,29 +493,22 @@ async function handleSignupSubmit(e) {
     return;
   }
 
-  try {
-    const res = await fetch(`${API_BASE}/auth/signup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, email, phone, otp, password })
-    });
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Signup failed.");
-
-    token = data.token;
-    currentUser = data.user;
-    localStorage.setItem('my_videos_token', token);
-
-    updateAuthUI();
-    showToast(`Account & Mobile verified! Welcome, ${currentUser.username}!`, "success");
-
-    document.getElementById('landingSignupForm').reset();
-    document.getElementById('otpDisplayBanner').style.display = 'none';
-    await fetchVideos();
-  } catch (err) {
-    showAlert(alertBox, err.message, "error");
+  const result = await requestApi('/auth/signup', 'POST', { username, email, phone, otp, password });
+  if (!result.ok) {
+    showAlert(alertBox, result.error, "error");
+    return;
   }
+
+  token = result.data.token;
+  currentUser = result.data.user;
+  localStorage.setItem('my_videos_token', token);
+
+  updateAuthUI();
+  showToast(`Account & Mobile verified! Welcome, ${currentUser.username}!`, "success");
+
+  document.getElementById('landingSignupForm').reset();
+  document.getElementById('otpDisplayBanner').style.display = 'none';
+  await fetchVideos();
 }
 
 
@@ -244,30 +540,20 @@ async function handleForgotStep1Submit(e) {
   const alertBox = document.getElementById('forgotAlert');
   alertBox.style.display = 'none';
 
-  try {
-    const res = await fetch(`${API_BASE}/auth/forgot-password-otp`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifier })
-    });
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Account not found.");
-
-    forgotPasswordUserId = data.userId;
-
-    // Display OTP and pre-fill for convenient testing
-    document.getElementById('forgotSimulatedCode').textContent = data.demoOtp;
-    document.getElementById('forgotOtpCode').value = data.demoOtp;
-
-    // Transition to Step 2
-    document.getElementById('forgotStep1Form').style.display = 'none';
-    document.getElementById('forgotStep2Form').style.display = 'flex';
-
-    showToast(`Reset OTP code sent! (Code: ${data.demoOtp})`, "success");
-  } catch (err) {
-    showAlert(alertBox, err.message, "error");
+  const result = await requestApi('/auth/forgot-password-otp', 'POST', { identifier });
+  if (!result.ok) {
+    showAlert(alertBox, result.error, "error");
+    return;
   }
+
+  forgotPasswordUserId = result.data.userId;
+  document.getElementById('forgotSimulatedCode').textContent = result.data.demoOtp;
+  document.getElementById('forgotOtpCode').value = result.data.demoOtp;
+
+  document.getElementById('forgotStep1Form').style.display = 'none';
+  document.getElementById('forgotStep2Form').style.display = 'flex';
+
+  showToast(`Reset OTP code sent! (Code: ${result.data.demoOtp})`, "success");
 }
 
 async function handleForgotStep2Submit(e) {
@@ -283,22 +569,15 @@ async function handleForgotStep2Submit(e) {
     return;
   }
 
-  try {
-    const res = await fetch(`${API_BASE}/auth/reset-password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: forgotPasswordUserId, otp, newPassword })
-    });
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to reset password.");
-
-    showToast("Password reset successfully! Please log in with your new password.", "success");
-    closeForgotPasswordModal();
-    showLandingTab('login');
-  } catch (err) {
-    showAlert(alertBox, err.message, "error");
+  const result = await requestApi('/auth/reset-password', 'POST', { userId: forgotPasswordUserId, otp, newPassword });
+  if (!result.ok) {
+    showAlert(alertBox, result.error, "error");
+    return;
   }
+
+  showToast("Password reset successfully! Please log in with your new password.", "success");
+  closeForgotPasswordModal();
+  showLandingTab('login');
 }
 
 
@@ -358,20 +637,14 @@ function switchAdminTab(tab) {
 }
 
 async function loadAdminUsersData() {
-  try {
-    const res = await fetch(`${API_BASE}/admin/users`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-
-    if (!res.ok) throw new Error("Failed to load user list for admin.");
-    adminUsersList = await res.json();
-
-    document.getElementById('adminUsersCount').textContent = adminUsersList.length;
-    renderAdminUsersTable();
-  } catch (err) {
-    console.error("Admin user load error:", err);
-    showToast(err.message, "error");
+  const result = await requestApi('/admin/users');
+  if (!result.ok) {
+    showToast(result.error || "Failed to load user list.", "error");
+    return;
   }
+  adminUsersList = result.data;
+  document.getElementById('adminUsersCount').textContent = adminUsersList.length;
+  renderAdminUsersTable();
 }
 
 function renderAdminUsersTable() {
@@ -419,39 +692,27 @@ async function handleToggleBlockUser(userId, currentBlockedStatus) {
   const actionText = currentBlockedStatus ? "unblock" : "block";
   if (!confirm(`Are you sure you want to ${actionText} this user account?`)) return;
 
-  try {
-    const res = await fetch(`${API_BASE}/admin/users/${userId}/block`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `Failed to ${actionText} user.`);
-
-    showToast(data.message, "success");
-    await loadAdminUsersData();
-  } catch (err) {
-    showToast(err.message, "error");
+  const result = await requestApi(`/admin/users/${userId}/block`, 'POST');
+  if (!result.ok) {
+    showToast(result.error || "Failed to update block status.", "error");
+    return;
   }
+
+  showToast(result.data.message || `User status updated.`, "success");
+  await loadAdminUsersData();
 }
 
 async function handleAdminDeleteUser(userId, username) {
   if (!confirm(`Are you sure you want to PERMANENTLY DELETE user '${username}'?`)) return;
 
-  try {
-    const res = await fetch(`${API_BASE}/admin/users/${userId}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to delete user account.");
-
-    showToast(data.message, "success");
-    await loadAdminUsersData();
-  } catch (err) {
-    showToast(err.message, "error");
+  const result = await requestApi(`/admin/users/${userId}`, 'DELETE');
+  if (!result.ok) {
+    showToast(result.error || "Failed to delete user.", "error");
+    return;
   }
+
+  showToast(result.data.message || "User account deleted.", "success");
+  await loadAdminUsersData();
 }
 
 async function handleAdminCredentialsSubmit(e) {
@@ -461,7 +722,6 @@ async function handleAdminCredentialsSubmit(e) {
   const newPassword = document.getElementById('adminNewPassword').value;
   const newPasswordConfirm = document.getElementById('adminNewPasswordConfirm').value;
   const alertBox = document.getElementById('adminSettingsAlert');
-
   alertBox.style.display = 'none';
 
   if (newPassword && newPassword !== newPasswordConfirm) {
@@ -469,29 +729,19 @@ async function handleAdminCredentialsSubmit(e) {
     return;
   }
 
-  try {
-    const res = await fetch(`${API_BASE}/admin/credentials`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ currentPassword, newUsername, newPassword })
-    });
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to update admin credentials.");
-
-    token = data.token;
-    currentUser = data.user;
-    localStorage.setItem('my_videos_token', token);
-
-    updateAuthUI();
-    showToast("Admin credentials updated successfully!", "success");
-    document.getElementById('adminCredentialsForm').reset();
-  } catch (err) {
-    showAlert(alertBox, err.message, "error");
+  const result = await requestApi('/admin/credentials', 'PUT', { currentPassword, newUsername, newPassword });
+  if (!result.ok) {
+    showAlert(alertBox, result.error, "error");
+    return;
   }
+
+  token = result.data.token;
+  currentUser = result.data.user;
+  localStorage.setItem('my_videos_token', token);
+
+  updateAuthUI();
+  showToast("Admin credentials updated successfully!", "success");
+  document.getElementById('adminCredentialsForm').reset();
 }
 
 function renderAdminVideosTable() {
@@ -525,21 +775,15 @@ function renderAdminVideosTable() {
 async function handleAdminDeleteVideo(videoId) {
   if (!confirm("Are you sure you want to delete this video link from Admin Panel?")) return;
 
-  try {
-    const res = await fetch(`${API_BASE}/videos/${videoId}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to delete video.");
-
-    showToast("Video link deleted from Admin Panel!", "success");
-    await fetchVideos();
-    renderAdminVideosTable();
-  } catch (err) {
-    showToast(err.message, "error");
+  const result = await requestApi(`/videos/${videoId}`, 'DELETE');
+  if (!result.ok) {
+    showToast(result.error || "Failed to delete video.", "error");
+    return;
   }
+
+  showToast("Video link deleted from Admin Panel!", "success");
+  await fetchVideos();
+  renderAdminVideosTable();
 }
 
 
@@ -548,31 +792,24 @@ async function handleAdminDeleteVideo(videoId) {
 async function fetchVideos() {
   if (!token) return;
 
-  try {
-    let url = `${API_BASE}/videos?`;
-    if (searchQuery) url += `q=${encodeURIComponent(searchQuery)}&`;
-    if (activeCategory && activeCategory !== 'All') url += `category=${encodeURIComponent(activeCategory)}`;
+  let url = '/videos?';
+  if (searchQuery) url += `q=${encodeURIComponent(searchQuery)}&`;
+  if (activeCategory && activeCategory !== 'All') url += `category=${encodeURIComponent(activeCategory)}`;
 
-    const res = await fetch(url, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-
-    if (res.status === 401 || res.status === 403) {
-      const data = await res.json();
+  const result = await requestApi(url);
+  if (!result.ok) {
+    if (result.status === 401 || result.status === 403) {
       clearTokenSession();
       updateAuthUI();
-      showToast(data.error || "Session ended. Please log in.", "error");
+      showToast(result.error || "Session ended. Please log in.", "error");
       return;
     }
-
-    if (!res.ok) throw new Error("Failed to load videos.");
-    
-    allVideos = await res.json();
-    renderVideoFeed();
-  } catch (err) {
-    console.error("Fetch videos error:", err);
-    showToast("Could not load videos from server.", "error");
+    showToast("Could not load videos.", "error");
+    return;
   }
+
+  allVideos = result.data;
+  renderVideoFeed();
 }
 
 function renderVideoFeed() {
@@ -705,7 +942,6 @@ function closePlayerModalOnOverlay(e) {
   }
 }
 
-// Audio Control: Toggle Mute / Unmute
 function toggleAudioMute() {
   const videoElem = document.getElementById('html5VideoPlayer');
   const iframeElem = document.getElementById('videoIframePlayer');
@@ -735,7 +971,6 @@ function updateMuteButtonUI() {
   }
 }
 
-// Fullscreen Control
 function toggleFullscreen() {
   const container = document.getElementById('playerContainer');
   if (!container) return;
@@ -764,21 +999,15 @@ async function handleDeleteVideo(videoId) {
 
   if (!confirm("Are you sure you want to delete this video link?")) return;
 
-  try {
-    const res = await fetch(`${API_BASE}/videos/${videoId}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to delete video.");
-
-    showToast("Video link deleted by Admin!", "success");
-    closePlayerModal();
-    await fetchVideos();
-  } catch (err) {
-    showToast(err.message, "error");
+  const result = await requestApi(`/videos/${videoId}`, 'DELETE');
+  if (!result.ok) {
+    showToast(result.error || "Failed to delete video.", "error");
+    return;
   }
+
+  showToast("Video link deleted by Admin!", "success");
+  closePlayerModal();
+  await fetchVideos();
 }
 
 // --- LANDING AUTH TABS ---
@@ -871,31 +1100,19 @@ async function handleUploadSubmit(e) {
 
   alertBox.style.display = 'none';
 
-  try {
-    const res = await fetch(`${API_BASE}/videos`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        title, url, category, thumbnailUrl, description
-      })
-    });
+  const result = await requestApi('/videos', 'POST', { title, url, category, thumbnailUrl, description });
+  if (!result.ok) {
+    showAlert(alertBox, result.error, "error");
+    return;
+  }
 
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to publish video link.");
-
-    showToast("Video published by Admin!", "success");
-    closeUploadModal();
-    document.getElementById('uploadForm').reset();
-    
-    await fetchVideos();
-    if (data.video && data.video.id) {
-      openPlayerModal(data.video.id);
-    }
-  } catch (err) {
-    showAlert(alertBox, err.message, "error");
+  showToast("Video published by Admin!", "success");
+  closeUploadModal();
+  document.getElementById('uploadForm').reset();
+  
+  await fetchVideos();
+  if (result.data.video && result.data.video.id) {
+    openPlayerModal(result.data.video.id);
   }
 }
 
